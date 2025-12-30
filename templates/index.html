@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Fleet MOT Reminder</title>
+<style>
+body{font-family:Arial;background:#f4f4f4;padding:40px}
+.box{background:white;padding:20px;border-radius:10px;width:450px}
+input,button{width:100%;padding:10px;margin:5px}
+</style>
+</head>
+<body>
+<div class="box">
+<h2>Add Vehicle</h2>
+<form method="POST">
+<input name="owner" placeholder="Owner Name" required>
+<input name="reg" placeholder="Car Reg" required>
+<input name="phone" placeholder="WhatsApp Number +447..." required>
+<button>Add Vehicle</button>
+</form>
+
+<h3>Saved Vehicles</h3>
+<ul>
+{% for v in vehicles %}
+<li style="color:{% if v.days <= 30 %}red{% else %}black{% endif %}">
+<b>{{v.owner}}</b> — {{v.reg}} — {{v.make}} {{v.model}} ({{v.colour}}) — {{v.phone}}<br>
+MOT: {{v.mot}} | TAX: {{v.tax}}
+</li>
+{% endfor %}
+</ul>
+</div>
+</body>
+</html>
