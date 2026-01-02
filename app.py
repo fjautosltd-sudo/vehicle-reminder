@@ -9,24 +9,42 @@ DVLA_API_KEY = "u9NyQyYxxb1P2Vf13NyIl2szdEBU2gLW4A4YVBzx"
 TWILIO_SID = "ACad58ab1285303f71a38993a38773314f"
 TWILIO_TOKEN = "dc337abc1c4607b1cba8ee90e74b05ba"
 
-DATA_FOLDER = os.path.join(os.path.dirname(__file__), "data")
-os.makedirs(DATA_FOLDER, exist_ok=True)
-DB_FILE = os.path.join(DATA_FOLDER, "vehicles.json")
+BASE = os.path.dirname(__file__)
+DATA = os.path.join(BASE, "data")
+os.makedirs(DATA, exist_ok=True)
+
+DB_FILE = os.path.join(DATA, "vehicles.json")
+CACHE_FILE = os.path.join(DATA, "dvla_cache.json")
 
 def load_db():
-    if not os.path.exists(DB_FILE):
-        return []
-    with open(DB_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    return json.load(open(DB_FILE)) if os.path.exists(DB_FILE) else []
 
 def save_db(data):
-    with open(DB_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+    json.dump(data, open(DB_FILE, "w"), indent=2)
+
+def load_cache():
+    return json.load(open(CACHE_FILE)) if os.path.exists(CACHE_FILE) else {}
+
+def save_cache(data):
+    json.dump(data, open(CACHE_FILE, "w"), indent=2)
+
+def uk(d):
+    return datetime.fromisoformat(d).strftime("%d/%m/%Y") if d else "None"
 
 def get_dvla(reg):
+    cache = load_cache()
+    today = str(datetime.today().date())
+
+    if reg in cache and cache[reg]["date"] == today:
+        return cache[reg]["data"]
+
     url = "https://driver-vehicle-licensing.api.gov.uk/vehicle-enquiry/v1/vehicles"
     headers = {"x-api-key": DVLA_API_KEY, "Content-Type": "application/json"}
-    return requests.post(url, headers=headers, json={"registrationNumber": reg}).json()
+    data = requests.post(url, headers=headers, json={"registrationNumber": reg}).json()
+
+    cache[reg] = {"date": today, "data": data}
+    save_cache(cache)
+    return data
 
 def send_whatsapp(phone, msg):
     Client(TWILIO_SID, TWILIO_TOKEN).messages.create(
@@ -38,15 +56,14 @@ def send_whatsapp(phone, msg):
 def daily_check():
     for v in load_db():
         try:
-            data = get_dvla(v["reg"])
+            d = get_dvla(v["reg"])
             today = datetime.today().date()
             alert = today + timedelta(days=30)
 
-            if data.get("motExpiryDate") and datetime.fromisoformat(data["motExpiryDate"]).date() == alert:
-                send_whatsapp(v["phone"], f"Hi {v['owner']}, MOT for {v['reg']} expires on {data['motExpiryDate']}.")
-
-            if data.get("taxDueDate") and datetime.fromisoformat(data["taxDueDate"]).date() == alert:
-                send_whatsapp(v["phone"], f"Hi {v['owner']}, Road Tax for {v['reg']} expires on {data['taxDueDate']}.")
+            if d.get("motExpiryDate") and datetime.fromisoformat(d["motExpiryDate"]).date() == alert:
+                send_whatsapp(v["phone"], f"Hi {v['owner']}, MOT for {v['reg']} expires on {uk(d['motExpiryDate'])}.")
+            if d.get("taxDueDate") and datetime.fromisoformat(d["taxDueDate"]).date() == alert:
+                send_whatsapp(v["phone"], f"Hi {v['owner']}, Road Tax for {v['reg']} expires on {uk(d['taxDueDate'])}.")
         except:
             pass
 
@@ -58,38 +75,32 @@ def scheduler():
 @app.route("/", methods=["GET","POST"])
 def index():
     vehicles = load_db()
-    display = []
     today = datetime.today().date()
+    display = []
 
-    for v in vehicles:
+    for i,v in enumerate(vehicles, start=1):
         try:
-            data = get_dvla(v["reg"])
-            mot_raw = data.get("motExpiryDate")
-            tax_raw = data.get("taxDueDate")
+            d = get_dvla(v["reg"])
+            mot = datetime.fromisoformat(d["motExpiryDate"]).date() if d.get("motExpiryDate") else None
+            tax = datetime.fromisoformat(d["taxDueDate"]).date() if d.get("taxDueDate") else None
 
-            mot = datetime.fromisoformat(mot_raw).date() if mot_raw else None
-            tax = datetime.fromisoformat(tax_raw).date() if tax_raw else None
-
-            days_left = min(
-                (mot - today).days if mot else 9999,
-                (tax - today).days if tax else 9999
-            )
+            days = min((mot-today).days if mot else 9999,(tax-today).days if tax else 9999)
 
             display.append({
+                "n": i,
                 "owner": v["owner"],
                 "reg": v["reg"],
                 "phone": v["phone"],
-                "make": data.get("make",""),
-                "model": data.get("model",""),
-                "colour": data.get("colour",""),
-                "mot": mot_raw,
-                "tax": tax_raw,
-                "days": days_left
+                "make": d.get("make",""),
+                "colour": d.get("colour",""),
+                "mot": uk(d.get("motExpiryDate")),
+                "tax": uk(d.get("taxDueDate")),
+                "days": days
             })
         except:
-            display.append({**v, "make":"","model":"","colour":"","mot":"Unavailable","tax":"Unavailable","days":9999})
+            display.append({"n":i,**v,"make":"","colour":"","mot":"None","tax":"None","days":9999})
 
-    display.sort(key=lambda x: x["days"])
+    display.sort(key=lambda x:x["days"])
 
     if request.method == "POST":
         vehicles.append({
