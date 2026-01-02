@@ -4,8 +4,9 @@
 <title>Fleet MOT Reminder</title>
 <style>
 body{font-family:Arial;background:#f4f4f4;padding:40px}
-.box{background:white;padding:20px;border-radius:10px;width:450px}
+.box{background:white;padding:20px;border-radius:10px;width:520px}
 input,button{width:100%;padding:10px;margin:5px}
+li{margin:6px 0}
 </style>
 </head>
 <body>
@@ -22,8 +23,7 @@ input,button{width:100%;padding:10px;margin:5px}
 <ul>
 {% for v in vehicles %}
 <li style="color:{% if v.days <= 30 %}red{% else %}black{% endif %}">
-<b>{{v.owner}}</b> — {{v.reg}} — {{v.make}} {{v.model}} ({{v.colour}}) — {{v.phone}}<br>
-MOT: {{v.mot}} | TAX: {{v.tax}}
+{{v.n}}. <b>{{v.owner}}</b> — {{v.reg}} — {{v.make}} ({{v.colour}}) — {{v.phone}} | MOT: {{v.mot}} | TAX: {{v.tax}}
 </li>
 {% endfor %}
 </ul>
